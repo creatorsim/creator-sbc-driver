@@ -26,6 +26,7 @@ from flask_cors import CORS, cross_origin
 import subprocess, os, signal
 import logging
 import webbrowser
+import re
 
 # Configure logging
 logging.basicConfig(
@@ -44,7 +45,7 @@ def do_fullclean_request(request):
         error = 0
         # flashing steps...
         if error == 0:
-            do_cmd_output(req_data, ["rm", "-f", "program"])
+            do_cmd_output(req_data, ["make clean", "-C", "main"])
         if error == 0:
             req_data["status"] += "Full clean done.\n"
     except Exception as e:
@@ -65,16 +66,12 @@ def do_eraseflash_request(request):
 
             error = do_cmd_output(
                 req_data,
-                [
-                    "ssh",
-                    "orangepi@10.117.129.219",
-                    command
-                ],
+                ["ssh", "orangepi@10.117.129.219", command],
             )
         if error == 0:
             req_data["status"] += "Erase flash done.\n"
         else:
-            logging.error("Error"+ error)    
+            logging.error("Error" + error)
 
     except Exception as e:
         req_data["status"] += str(e) + "\n"
@@ -91,6 +88,8 @@ def do_get_form(request):
 
 
 # Adapt assembly file...
+
+
 def creator_build(file_in, file_out):
     try:
         with open(file_in, "rt") as fin, open(file_out, "wt") as fout:
@@ -98,9 +97,14 @@ def creator_build(file_in, file_out):
             fout.write(".text\n")
             fout.write(".type main, @function\n")
             fout.write(".globl main\n\n")
+            fout.write('.include "ecall_macros.s"\n\n')
 
-            # copy all lines from file_in to file_out
+
+
+            pattern = re.compile(r"\becall\b")  # palabra completa "ecall"
+
             for line in fin:
+                line = pattern.sub("ECALL", line)
                 fout.write(line)
 
         return 0
@@ -179,7 +183,7 @@ def do_flash_request(request):
             # Compile: CHECK HOW SAIL DOES THIS
             error = do_cmd(
                 req_data,
-                ["riscv64-linux-gnu-gcc", "-g", "-o", "program", "main/program.s"],
+                ["make", "-C", "./main"],
             )
         if error == 0:
             # Send code: CONFIGURE IP AND USER
@@ -187,11 +191,9 @@ def do_flash_request(request):
                 req_data,
                 [
                     "scp",
-                    "main/program.s",
-                    "main/gdbinit",
-                    "main/script.gdb",
-                    "program",
-                    "orangepi@10.117.129.219:/home/orangepi/creator",
+                    "-r",
+                    "main",
+                    "orangepi@10.117.129.219:~/creator",
                 ],
             )
 
@@ -209,7 +211,7 @@ def do_monitor_request(request):
         req_data["status"] = ""
 
         do_cmd(
-            req_data, ["ssh", "orangepi@10.117.129.219", "/creator/program"], "program"
+            req_data, ["ssh", "orangepi@10.117.129.219", "~/creator/main/program"], "program"
         )
 
     except Exception as e:
@@ -258,13 +260,13 @@ def kill_all_processes(host, user, process_name):
 
     try:
         result = subprocess.run(
-            ssh_cmd_kill, capture_output=True, text=True, timeout=30, check=False
+            ssh_cmd_kill, capture_output=True, text=True, timeout=10, check=False
         )
 
         if result.returncode != 0:
             # pkill devuelve 1 si no encontró procesos, no es un error grave en general
             if result.returncode == 1:
-                logging.warning(f"Not process founded '{process_name}' in {host}.")
+                logging.debug(f"Not process founded '{process_name}' in {host}.")
                 return 1
             logging.error(
                 f"Error killing process '{process_name}' in {host}. Output: {result.stderr.strip()}"
@@ -296,17 +298,16 @@ def do_debug(request):
 
     original_route = os.getcwd()
     main_route = os.path.join(original_route, "main")
-    main_route_destino = "/home/orangepi/creator"
+    main_route_destino = "/home/orangepi/creator/main"
 
     url = "http://10.117.129.219:5000/"
     webbrowser.open_new_tab(url)
-
 
     try:
         cmd = (
             f"source /home/orangepi/gdbgui-venv/bin/activate && "
             f"gdbgui ~/creator/program --host 0.0.0.0 --port 5000 --no-browser "
-            f"-g \"gdb -ex 'set substitute-path {main_route} {main_route_destino}' -x ~/creator/script.gdb\""
+            f"-g \"gdb -ex 'set substitute-path {main_route} {main_route_destino}' -x ~/creator/main/script.gdb\""
         )
         do_cmd(req_data, ["ssh", "orangepi@10.117.129.219", cmd])
     except Exception as e:
@@ -397,6 +398,7 @@ def post_stop_monitor():
 @cross_origin()
 def post_fullclean_flash():
     return do_fullclean_request(request)
+
 
 @app.route("/eraseflash", methods=["POST"])
 @cross_origin()
