@@ -1,5 +1,5 @@
 CC = riscv64-linux-gnu-gcc
-CFLAGS = -march=rv64gc -mabi=lp64d -g -O0
+CFLAGS = -march=rv64imafdc -mabi=lp64d -g -O0
 
 ASM_SOURCES = program.s ecall_macros.s
 ASM_OBJS = $(ASM_SOURCES:.s=.o)

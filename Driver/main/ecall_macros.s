@@ -8,14 +8,13 @@ buffer_end:
 minus_sign:
     .ascii "-"
 nl: .ascii "\n" 
-fmt_float: .string "%f\n"   
-fmt_double: .string "%f\n"  
+fmt_string:
+    .asciz "%d.%03d\n"  
 .section .text
 #ifdef RISCV64_ORANGEPIRV2
 .macro ecall
-    addi sp, sp, -16       #ToDO: Save the right registers
-    sw ra, 0(sp)           
-    sw t0, 4(sp)           
+    addi sp, sp, -4      #ToDO: Save the right registers
+    sw ra, 0(sp)                   
 
     mv t0, a7              
 
@@ -33,6 +32,11 @@ fmt_double: .string "%f\n"
 
     li t1, 5
     beq t0, t1, 5f
+
+    li t1, 6
+    beq t0, t1, 6f
+
+
 
     li t1, 8
     beq t0, t1, 8f
@@ -115,11 +119,39 @@ fmt_double: .string "%f\n"
 
 
 2:
-    jal ra, print_float
-    j 13f
+    # Take int part 
+    fcvt.w.s t0, fa0
+    #Take decimal part
+    fcvt.s.w ft0, t0
+    fsub.s ft1, fa0, ft0
+    li t1, 1000 #Checkout precision
+    fcvt.s.w ft2, t1
+    fmul.s ft3, ft1, ft2
+    fcvt.w.s t1, ft3
+    #Print
+    mv a1, t0
+    mv a2, t1 
+    la a0, fmt_string
+    call printf 
+
+    j 13f 
 
 3:
-    jal ra, print_double
+   # Take int part 
+    fcvt.w.d t0, fa0
+    #Take decimal part
+    fcvt.d.w ft0, t0
+    fsub.d ft1, fa0, ft0
+    li t1, 1000 #Checkout precision
+    fcvt.d.w ft2, t1
+    fmul.d ft3, ft1, ft2
+    fcvt.w.d t1, ft3
+    #Print
+    mv a1, t0
+    mv a2, t1 
+    la a0, fmt_string
+    call printf 
+
     j 13f 
 
 4:
@@ -221,7 +253,148 @@ fmt_double: .string "%f\n"
 .Linvalid\@:
     li a0, 0
     j 13f
-     
+
+6:  # Read the line
+    li a7, 63       # syscall number for read
+    li a0, 0        # fd 0 (stdin)
+    la a1, buffer   # address of buffer
+    li a2, 20       # number of bytes to read
+    .word 0x00000073
+    mv t0, a0          # number bytes read
+    li s0, 0           # s0 = acumulador parte entera
+    li s1, 0           # s1 = flag signo (0 = +, 1 = -)
+    la s2, buffer      # s2 = ptr actual en buffer
+    mv s3, t0          # s3 = bytes restantes
+    li s4, 0           # s4 = visto_digito (0/1)
+    li s5,0            # acumulador parte decimal
+    li s6, 0       # contador dígitos decimales
+    li s7, 0       # flag punto decimal visto (0=no, 1=sí)
+
+.Lparse_loop_float\@:
+    beqz s3, .Lfinish_parse_float\@
+    lb t1, 0(s2)
+    addi s2, s2, 1
+    addi s3, s3, -1
+
+    # final de línea o nulo
+    li t2, 10
+    beq t1, t2, .Lfinish_parse_float\@
+    li t2, 0
+    beq t1, t2, .Lfinish_parse_float\@
+
+    # signo solo si no hemos visto dígitos
+    li t2, 45
+    beq t1, t2, .Lhandle_minus_float\@
+    li t2, 43
+    beq t1, t2, .Lparse_loop_float\@
+
+    # si punto decimal
+    li t2, 46     # '.'
+    beq t1, t2, .Lhandle_dot_float\@
+
+    # dígitos '0'..'9'
+    li t2, 48
+    blt t1, t2, .Lfinish_parse_float\@
+    li t2, 57
+    bgt t1, t2, .Lfinish_parse_float\@
+
+    # convertir ascii a número
+    li t2, 48
+    sub t3, t1, t2
+
+    # Si no hemos visto punto decimal, acumulamos en parte entera (s0)
+    beqz s7, .Laccumulate_int_float\@
+
+    # Si ya vimos punto decimal, acumulamos en parte decimal (s5)
+    li t4, 10
+    mul s5, s5, t4
+    add s5, s5, t3
+    addi s6, s6, 1    # contador de dígitos decimales
+    li s4, 1          # hemos visto dígito
+    j .Lparse_loop_float\@
+
+.Laccumulate_int_float\@:
+    li t4, 10
+    mul s0, s0, t4
+    add s0, s0, t3
+    li s4, 1
+    j .Lparse_loop_float\@
+
+.Lhandle_minus_float\@:
+    beqz s4, .Lset_minus_float\@
+    j .Linvalid_float\@
+
+.Lset_minus_float\@:
+    li s1, 1
+    j .Lparse_loop_float\@
+
+.Lhandle_dot_float\@:
+    beqz s7, .Lset_dot_float\@
+    j .Lfinish_parse_float\@    # si ya había punto, termina parseo
+
+.Lset_dot_float\@:
+    li s7, 1
+    j .Lparse_loop_float\@
+
+.Lfinish_parse_float\@:
+    beqz s4, .Linvalid_float\@
+
+    # Convertir parte entera a float
+    fcvt.s.w ft0, s0
+
+    # Convertir parte decimal a float
+    fcvt.s.w ft1, s5
+
+    # Calcular divisor = 10^s6
+    # Inicializar ft2 = 1.0
+    li t2, 1
+    fcvt.s.w ft2, t2
+
+    li t3, 0
+
+.pow10_loop_float\@:
+    beq t3, s6, .pow10_done_float\@
+    li t4, 10
+    fcvt.s.w ft3, t4
+    fmul.s ft2, ft2, ft3
+    addi t3, t3, 1
+    j .pow10_loop_float\@
+
+.pow10_done_float\@:
+    # dividir parte decimal por divisor
+    fdiv.s ft1, ft1, ft2
+
+    # sumar parte entera + parte decimal
+    fadd.s ft0, ft0, ft1
+
+    fmv.x.s t5, ft0    # mover bits float final a t5 (entero)
+    fmv.x.s t6, ft1    # bits parte decimal en t6
+    fmv.x.s t2, ft2    # bits divisor en t7
+
+
+    # aplicar signo si s1=1
+    beqz s1, .Lsave_float\@
+    fneg.s ft0, ft0
+
+.Lsave_float\@:
+    # Aquí ft0 tiene el float final
+
+    # Por ejemplo, mover a a0 como entero bit a bit
+    fmv.s fa0, ft0
+
+    j 13f
+
+.Linvalid_float\@:
+    li a0, 0
+    j 13f
+7:
+    li a7, 63       # syscall number for read
+    li a0, 0        # fd 0 (stdin)
+    la a1, buffer   # address of buffer
+    li a2, 20       # number of bytes to read
+    .word 0x00000073
+    j 13f
+
 8:
     li a7, 63       # syscall number for read
     mv t0,a0
@@ -230,6 +403,13 @@ fmt_double: .string "%f\n"
     li a0, 0
     .word 0x00000073
     j 13f
+
+9: #TODO que hace esto
+    li a7, 214  
+    li a0, 0
+    .word 0x00000073
+    j 13f
+
 10:
     li a7, 93       # syscall number for read
     li a0, 0
@@ -259,10 +439,9 @@ fmt_double: .string "%f\n"
     li a7,64
     .word 0x00000073      # <-- real ecall without macro
     j 13f
-13:
-    lw t0, 4(sp)          
+13:        
     lw ra, 0(sp)           
-    addi sp, sp, 16 
+    addi sp, sp, 4 
 
 
 .endm
