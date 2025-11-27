@@ -20,21 +20,13 @@
 
 .text
 main:
-    # Print int
-    li a0, 15
-    li a7, 1
-    ecall
 
-    # Print float
-    la t0,number_d
-    fld   fa0,  0(t0)
-    li a7, 3
+    # Write double
+    li a7, 7
     ecall
     
-    # print string
-    la a0, msg
-    li a7, 4
+    li a7,3
     ecall
-
+    
     # return 
     jr ra

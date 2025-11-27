@@ -155,7 +155,6 @@ def do_cmd_output(req_data, cmd_array):
 # (2) Flasing assembly program into target board
 def do_flash_request(request):
     try:
-        print("AAAAA")
         req_data = request.get_json()
         target_device = req_data["target_port"]
         target_board = req_data["target_board"]
@@ -163,7 +162,6 @@ def do_flash_request(request):
         asm_code = req_data["assembly"]
         req_data["status"] = ""
         user, host = target_device.split("@")
-        print("GDBGUI")
         if "gdbgui" in process_holder:
             logging.debug("Killing GDBGUI")
             kill_all_processes(host, user, "gdbgui")
@@ -178,7 +176,6 @@ def do_flash_request(request):
         error = creator_build("tmp_assembly.s", "main/program.s")
         if error != 0:
             req_data["status"] += "Error adapting assembly file...\n"
-        print("Make")
         # flashing steps...
         if error == 0:
             # Compile: CHECK HOW SAIL DOES THIS

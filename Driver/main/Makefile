@@ -4,18 +4,16 @@ CFLAGS = -march=rv64imafdc -mabi=lp64d -g -O0
 ASM_SOURCES = program.s ecall_macros.s
 ASM_OBJS = $(ASM_SOURCES:.s=.o)
 
-C_SOURCES = ecall.c
-C_OBJS = $(C_SOURCES:.c=.o)
 
 TARGET = program
 
 all: build
 
 build: $(TARGET)
-	rm -f $(ASM_OBJS) $(C_OBJS)
+	rm -f $(ASM_OBJS) 
 
-$(TARGET): $(ASM_OBJS) $(C_OBJS)
-	$(CC) $(ASM_OBJS) $(C_OBJS) -o $@ -static -lc -lm
+$(TARGET): $(ASM_OBJS)
+	$(CC) $(ASM_OBJS)  -o $@ -static -lc -lm
 
 %.o: %.s
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -24,4 +22,4 @@ $(TARGET): $(ASM_OBJS) $(C_OBJS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(ASM_OBJS) $(C_OBJS) $(TARGET)
+	rm -f $(ASM_OBJS) $(TARGET)
