@@ -1,4 +1,6 @@
 .macro print_int a0_reg
+    addi sp, sp, -4
+    sw ra, 0(sp)
     la t1, buffer_end       # Apuntar al final del buffer
     mv t6, t1               # Guardar puntero final para restaurar luego
     li t2, 0                # contador dígitos
@@ -69,6 +71,8 @@
 
     # Restaurar t1 al final del buffer original
     mv t1, t6
+    lw ra, 0(sp)
+    addi sp, sp, 4
 
 .endm
 
@@ -86,8 +90,11 @@ fmt_string: .ascii "%d.%d"
 .section .text
 #ifdef RISCV64_ORANGEPIRV2
 .macro ecall
-    addi sp, sp, -4      #ToDO: Save the right registers
-    sw ra, 0(sp)                   
+    addi zero, zero, 16
+    addi sp, sp, -16
+    sd ra, 0(sp)
+    sd s0, 8(sp)
+                
 
     mv t0, a7              
 
@@ -128,8 +135,11 @@ fmt_string: .ascii "%d.%d"
 
     j 13f                   # return
 
-1:
+1:  
+
     print_int a0
+
+
     # newline
     li a0, 1
     la a1, nl
@@ -617,9 +627,9 @@ fmt_string: .ascii "%d.%d"
     .word 0x00000073      # <-- real ecall without macro
     j 13f
 13:        
-    lw ra, 0(sp)           
-    addi sp, sp, 4 
-
+    ld ra, 0(sp)
+    ld s0, 8(sp)
+    addi sp, sp, 16
 
 .endm
 #endif
