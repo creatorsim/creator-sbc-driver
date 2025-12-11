@@ -271,7 +271,7 @@ def do_flash_request(request):
                     "main",
                     f"{target_device}:{target_loc}",
                 ],
-                60,
+                60
             )
 
         if error == 0:
@@ -318,7 +318,7 @@ def do_monitor_request(request):
             return jsonify(req_data)
 
         route = target_loc + "/main/program"
-        error = do_cmd_output(req_data, ["ssh", target_device, route], "program", 60)
+        error = do_cmd(req_data, ["ssh", target_device, route], "program", 60)
         if error != 0:
             return jsonify(req_data)
     except Exception as e:
